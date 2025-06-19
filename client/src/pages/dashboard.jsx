@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   MdAdminPanelSettings,
   MdKeyboardArrowDown,
@@ -9,11 +9,14 @@ import { LuClipboardEdit } from "react-icons/lu";
 import { FaNewspaper, FaUsers } from "react-icons/fa";
 import { FaArrowsToDot } from "react-icons/fa6";
 import moment from "moment";
-import { summary } from "../assets/data";
 import clsx from "clsx";
 import { Chart } from "../components/Chart";
 import { BGS, PRIOTITYSTYELS, TASK_TYPE, getInitials } from "../utils";
 import UserInfo from "../components/UserInfo";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchTaskSummary, fetchChartData } from "../redux/slices/taskSlice";
+import Loading from "../components/Loader";
+import { toast } from "sonner";
 
 const TaskTable = ({ tasks }) => {
   const ICONS = {
@@ -146,7 +149,40 @@ const UserTable = ({ users }) => {
   );
 };
 const Dashboard = () => {
-  const totals = summary.tasks;
+  const dispatch = useDispatch();
+  const { summary, chartData, loading, error } = useSelector((state) => state.tasks);
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        await Promise.all([
+          dispatch(fetchTaskSummary()).unwrap(),
+          dispatch(fetchChartData()).unwrap()
+        ]);
+      } catch (error) {
+        toast.error(error.message || "Failed to load dashboard data");
+      }
+    };
+    loadDashboardData();
+  }, [dispatch]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loading />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-red-500">{error}</div>
+      </div>
+    );
+  }
+
+  const totals = summary?.tasks || {};
 
   const stats = [
     {
@@ -158,14 +194,14 @@ const Dashboard = () => {
     },
     {
       _id: "2",
-      label: "COMPLTED TASK",
+      label: "COMPLETED TASK",
       total: totals["completed"] || 0,
       icon: <MdAdminPanelSettings />,
       bg: "bg-[#0f766e]",
     },
     {
       _id: "3",
-      label: "TASK IN PROGRESS ",
+      label: "TASK IN PROGRESS",
       total: totals["in progress"] || 0,
       icon: <LuClipboardEdit />,
       bg: "bg-[#f59e0b]",
@@ -173,9 +209,9 @@ const Dashboard = () => {
     {
       _id: "4",
       label: "TODOS",
-      total: totals["todo"],
+      total: totals["todo"] || 0,
       icon: <FaArrowsToDot />,
-      bg: "bg-[#be185d]" || 0,
+      bg: "bg-[#be185d]",
     },
   ];
 
@@ -199,29 +235,28 @@ const Dashboard = () => {
       </div>
     );
   };
+
   return (
-    <div classNamee='h-full py-4'>
+    <div className='h-full py-4 w-full flex flex-col gap-6'>
+      {/* Task Statistics Cards in one line */}
       <div className='grid grid-cols-1 md:grid-cols-4 gap-5'>
-        {stats.map(({ icon, bg, label, total }, index) => (
-          <Card key={index} icon={icon} bg={bg} label={label} count={total} />
+        {stats.map((item) => (
+          <Card key={item._id} {...item} />
         ))}
       </div>
 
-      <div className='w-full bg-white my-16 p-4 rounded shadow-sm'>
-        <h4 className='text-xl text-gray-600 font-semibold'>
-          Chart by Priority
-        </h4>
-        <Chart />
+      {/* Priority Task Chart - Full Width */}
+      <div className='w-full bg-white px-6 py-4 shadow-md rounded'>
+        <h3 className='text-base font-semibold text-gray-700 mb-4'>
+          PRIORITY TASK
+        </h3>
+        <Chart data={chartData} />
       </div>
 
-      <div className='w-full flex flex-col md:flex-row gap-4 2xl:gap-10 py-8'>
-        {/* /left */}
-
-        <TaskTable tasks={summary.last10Task} />
-
-        {/* /right */}
-
-        <UserTable users={summary.users} />
+      {/* Task and User Tables */}
+      <div className='w-full flex flex-col md:flex-row gap-5'>
+        <TaskTable tasks={summary?.last10Tasks || []} />
+        <UserTable users={summary?.activeUsers || []} />
       </div>
     </div>
   );

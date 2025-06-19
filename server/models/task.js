@@ -1,52 +1,68 @@
-import mongoose, { Schema } from "mongoose";
+import mongoose from "mongoose";
 
-const taskSchema = new Schema(
+const taskSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true },
-    date: { type: Date, default: new Date() },
+    title: {
+      type: String,
+      required: true,
+    },
+    date: {
+      type: Date,
+      required: true,
+    },
     priority: {
       type: String,
-      default: "normal",
       enum: ["high", "medium", "normal", "low"],
+      default: "normal",
     },
     stage: {
       type: String,
-      default: "todo",
       enum: ["todo", "in progress", "completed"],
+      default: "todo",
     },
-    activities: [
-      {
-        type: {
-          type: String,
-          default: "assigned",
-          enum: [
-            "assigned",
-            "started",
-            "in progress",
-            "bug",
-            "completed",
-            "commented",
-          ],
-        },
-        activity: String,
-        date: { type: Date, default: new Date() },
-        by: { type: Schema.Types.ObjectId, ref: "User" },
+    assets: [{
+      type: String,
+    }],
+    team: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    }],
+    isTrashed: {
+      type: Boolean,
+      default: false,
+    },
+    activities: [{
+      type: {
+        type: String,
+        enum: ["started", "commented", "assigned", "in progress", "bug", "completed"],
       },
-    ],
-
-    subTasks: [
-      {
-        title: String,
-        date: Date,
-        tag: String,
+      activity: String,
+      date: {
+        type: Date,
+        default: Date.now,
       },
-    ],
-    assets: [String],
-    team: [{ type: Schema.Types.ObjectId, ref: "User" }],
-    isTrashed: { type: Boolean, default: false },
+      by: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    }],
+    subTasks: [{
+      title: String,
+      date: Date,
+      tag: String,
+    }],
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
+
+// Indexes for better query performance
+taskSchema.index({ title: "text" });
+taskSchema.index({ stage: 1 });
+taskSchema.index({ priority: 1 });
+taskSchema.index({ isTrashed: 1 });
+taskSchema.index({ "team": 1 });
 
 const Task = mongoose.model("Task", taskSchema);
 

@@ -1,35 +1,30 @@
 import express from "express";
-import { isAdminRoute, protectRoute } from "../middlewares/authMiddlewave.js";
 import {
-  activateUserProfile,
-  changeUserPassword,
-  deleteUserProfile,
-  getNotificationsList,
-  getTeamList,
-  loginUser,
-  logoutUser,
-  markNotificationRead,
   registerUser,
+  loginUser,
+  getUserProfile,
   updateUserProfile,
+  getUsers,
+  updateUser,
+  deleteUser
 } from "../controllers/userController.js";
+import { protect, admin } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
+// Public routes
 router.post("/register", registerUser);
 router.post("/login", loginUser);
-router.post("/logout", logoutUser);
 
-router.get("/get-team", protectRoute, isAdminRoute, getTeamList);
-router.get("/notifications", protectRoute, getNotificationsList);
+// Protected routes
+router.use(protect);
+router.get("/profile", getUserProfile);
+router.put("/profile", updateUserProfile);
 
-router.put("/profile", protectRoute, updateUserProfile);
-router.put("/read-noti", protectRoute, markNotificationRead);
-router.put("/change-password", protectRoute, changeUserPassword);
-
-// //   FOR ADMIN ONLY - ADMIN ROUTES
-router
-  .route("/:id")
-  .put(protectRoute, isAdminRoute, activateUserProfile)
-  .delete(protectRoute, isAdminRoute, deleteUserProfile);
+// Admin routes
+router.use(admin);
+router.get("/", getUsers);
+router.put("/:id", updateUser);
+router.delete("/:id", deleteUser);
 
 export default router;

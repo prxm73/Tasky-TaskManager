@@ -1,26 +1,93 @@
+import React from "react";
 import { Transition } from "@headlessui/react";
 import clsx from "clsx";
-import { Fragment, useRef } from "react";
+import { Fragment, useRef, useEffect } from "react";
 import { IoClose } from "react-icons/io5";
 import { useDispatch, useSelector } from "react-redux";
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import TaskDetails from "./pages/TaskDetails";
 import Tasks from "./pages/Tasks";
 import Trash from "./pages/Trash";
 import Users from "./pages/Users";
 import Dashboard from "./pages/dashboard";
-import { setOpenSidebar } from "./redux/slices/authSlice";
+import { setOpenSidebar, logout } from "./redux/slices/authSlice";
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Error caught by boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100">
+          <div className="p-8 bg-white rounded-lg shadow-md">
+            <h2 className="text-2xl font-bold text-red-600 mb-4">Something went wrong</h2>
+            <p className="text-gray-600 mb-4">Please try refreshing the page or contact support if the problem persists.</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function Layout() {
-  const { user } = useSelector((state) => state.auth);
-
+  const { user, token } = useSelector((state) => state.auth);
   const location = useLocation();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
 
-  return user ? (
+  useEffect(() => {
+    // Check token expiration only if we have a token
+    if (token) {
+      try {
+        const tokenData = JSON.parse(atob(token.split('.')[1]));
+        const expirationTime = tokenData.exp * 1000; // Convert to milliseconds
+        
+        if (Date.now() >= expirationTime) {
+          dispatch(logout());
+          navigate('/log-in', { state: { from: location }, replace: true });
+        }
+      } catch (error) {
+        console.error('Error parsing token:', error);
+        dispatch(logout());
+        navigate('/log-in', { state: { from: location }, replace: true });
+      }
+    } else if (!user) {
+      // Only redirect if we don't have a user and no token
+      navigate('/log-in', { state: { from: location }, replace: true });
+    }
+  }, [token, user, dispatch, navigate, location]);
+
+  // Don't render anything while checking authentication
+  if (!user && !token) {
+    return null;
+  }
+
+  return (
     <div className='w-full h-screen flex flex-col md:flex-row'>
       <div className='w-1/5 h-screen bg-white sticky top-0 hidden md:block'>
         <Sidebar />
@@ -32,12 +99,12 @@ function Layout() {
         <Navbar />
 
         <div className='p-4 2xl:px-10'>
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </div>
     </div>
-  ) : (
-    <Navigate to='/log-in' state={{ from: location }} replace />
   );
 }
 
@@ -72,7 +139,7 @@ const MobileSidebar = () => {
             onClick={() => closeSidebar()}
           >
             <div className='bg-white w-3/4 h-full'>
-              <div className='w-full flex justify-end px-5 mt-5'>
+              <div className='w-full flex justify-end px-5'>
                 <button
                   onClick={() => closeSidebar()}
                   className='flex justify-end items-end'
@@ -81,7 +148,7 @@ const MobileSidebar = () => {
                 </button>
               </div>
 
-              <div className='-mt-10'>
+              <div className='mt-1'>
                 <Sidebar />
               </div>
             </div>
@@ -94,25 +161,32 @@ const MobileSidebar = () => {
 
 function App() {
   return (
-    <main className='w-full min-h-screen bg-[#f3f4f6] '>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route index path='/' element={<Navigate to='/dashboard' />} />
-          <Route path='/dashboard' element={<Dashboard />} />
-          <Route path='/tasks' element={<Tasks />} />
-          <Route path='/completed/:status' element={<Tasks />} />
-          <Route path='/in-progress/:status' element={<Tasks />} />
-          <Route path='/todo/:status' element={<Tasks />} />
-          <Route path='/team' element={<Users />} />
-          <Route path='/trashed' element={<Trash />} />
-          <Route path='/task/:id' element={<TaskDetails />} />
-        </Route>
+    <ErrorBoundary>
+      <main className='w-full min-h-screen bg-[#f3f4f6]'>
+        <Routes>
+          <Route path='/log-in' element={<Login />} />
+          <Route path='/register' element={<Register />} />
+          <Route element={<Layout />}>
+            <Route path='/' element={<Navigate to='/dashboard' replace />} />
+            <Route path='/dashboard' element={<Dashboard />} />
+            <Route path='/tasks' element={<Tasks />} />
+            <Route path='/completed/:status' element={<Tasks />} />
+            <Route path='/in-progress/:status' element={<Tasks />} />
+            <Route path='/todo/:status' element={<Tasks />} />
+            <Route path='/team' element={<Users />} />
+            <Route path='/trashed' element={<Trash />} />
+            <Route path='/task/:id' element={<TaskDetails />} />
+          </Route>
+        </Routes>
 
-        <Route path='/log-in' element={<Login />} />
-      </Routes>
-
-      <Toaster richColors />
-    </main>
+        <Toaster 
+          richColors 
+          position="top-right"
+          expand={true}
+          closeButton
+        />
+      </main>
+    </ErrorBoundary>
   );
 }
 

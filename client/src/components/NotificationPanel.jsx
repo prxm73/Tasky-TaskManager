@@ -93,7 +93,7 @@ const NotificationPanel = () => {
           leaveFrom='opacity-100 translate-y-0'
           leaveTo='opacity-0 translate-y-1'
         >
-          <Popover.Panel className='absolute -right-16 md:-right-2 z-10 mt-5 flex w-screen max-w-max  px-4'>
+          <Popover.Panel className='absolute -right-16 md:right-2 z-10 mt-5 flex w-screen max-w-max  px-4'>
             {({ close }) =>
               data?.length > 0 && (
                 <div className='w-screen max-w-md flex-auto overflow-hidden rounded-3xl bg-white text-sm leading-6 shadow-lg ring-1 ring-gray-900/5'>
@@ -103,7 +103,7 @@ const NotificationPanel = () => {
                         key={item._id + index}
                         className='group relative flex gap-x-4 rounded-lg p-4 hover:bg-gray-50'
                       >
-                        <div className='mt-1 h-8 w-8 flex items-center justify-center rounded-lg bg-gray-200 group-hover:bg-white'>
+                        <div className='mt-1 h-8 w-8 flex items-center justify-center'>
                           {ICONS[item.notiType]}
                         </div>
 

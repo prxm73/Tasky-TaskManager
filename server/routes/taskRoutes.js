@@ -1,37 +1,43 @@
 import express from "express";
 import {
-  createSubTask,
-  createTask,
-  dashboardStatistics,
-  deleteRestoreTask,
-  duplicateTask,
-  getTask,
   getTasks,
-  postTaskActivity,
-  trashTask,
+  getTaskSummary,
+  getChartData,
+  createTask,
   updateTask,
+  deleteTask,
+  addActivity,
+  addSubtask
 } from "../controllers/taskController.js";
-import { isAdminRoute, protectRoute } from "../middlewares/authMiddlewave.js";
+import { protect } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/create", protectRoute, isAdminRoute, createTask);
-router.post("/duplicate/:id", protectRoute, isAdminRoute, duplicateTask);
-router.post("/activity/:id", protectRoute, postTaskActivity);
+// All routes are protected
+router.use(protect);
 
-router.get("/dashboard", protectRoute, dashboardStatistics);
-router.get("/", protectRoute, getTasks);
-router.get("/:id", protectRoute, getTask);
+// Get all tasks
+router.get("/", getTasks);
 
-router.put("/create-subtask/:id", protectRoute, isAdminRoute, createSubTask);
-router.put("/update/:id", protectRoute, isAdminRoute, updateTask);
-router.put("/:id", protectRoute, isAdminRoute, trashTask);
+// Get task summary for dashboard
+router.get("/summary", getTaskSummary);
 
-router.delete(
-  "/delete-restore/:id?",
-  protectRoute,
-  isAdminRoute,
-  deleteRestoreTask
-);
+// Get chart data
+router.get("/chart", getChartData);
+
+// Create task
+router.post("/", createTask);
+
+// Update task
+router.put("/:id", updateTask);
+
+// Delete task
+router.delete("/:id", deleteTask);
+
+// Add activity to task
+router.post("/:id/activities", addActivity);
+
+// Add subtask
+router.post("/:id/subtasks", addSubtask);
 
 export default router;

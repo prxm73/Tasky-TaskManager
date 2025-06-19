@@ -5,6 +5,7 @@ import { IoLogOutOutline } from "react-icons/io5";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { getInitials } from "../utils";
+import { logout } from "../redux/slices/authSlice";
 
 const UserAvatar = () => {
   const [open, setOpen] = useState(false);
@@ -14,8 +15,13 @@ const UserAvatar = () => {
   const navigate = useNavigate();
 
   const logoutHandler = () => {
-    console.log("logout");
+    dispatch(logout());
+    navigate('/log-in');
   };
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <>
@@ -24,7 +30,7 @@ const UserAvatar = () => {
           <div>
             <Menu.Button className='w-10 h-10 2xl:w-12 2xl:h-12 items-center justify-center rounded-full bg-blue-600'>
               <span className='text-white font-semibold'>
-                {getInitials(user?.name)}
+                {getInitials(user.name)}
               </span>
             </Menu.Button>
           </div>
@@ -38,8 +44,8 @@ const UserAvatar = () => {
             leaveFrom='transform opacity-100 scale-100'
             leaveTo='transform opacity-0 scale-95'
           >
-            <Menu.Items className='absolute right-0 mt-2 w-56 origin-top-right divide-gray-100 rounded-md bg-white shadow-2xl ring-1 ring-black/5 focus:outline-none'>
-              <div className='p-4'>
+            <Menu.Items className='absolute right-0 mt-2 w-56 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none'>
+              <div className='px-1 py-1'>
                 <Menu.Item>
                   {({ active }) => (
                     <button

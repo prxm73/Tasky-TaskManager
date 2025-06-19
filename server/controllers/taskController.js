@@ -2,11 +2,40 @@ import Notice from "../models/notification.js";
 import Task from "../models/task.js";
 import User from "../models/user.js";
 
+// Validation helper
+const validateTaskInput = (data) => {
+  const errors = [];
+  if (!data.title?.trim()) errors.push("Title is required");
+  if (!data.team?.length) errors.push("At least one team member is required");
+  if (!data.stage?.trim()) errors.push("Stage is required");
+  if (!data.date) errors.push("Date is required");
+  if (!data.priority?.trim()) errors.push("Priority is required");
+  return errors;
+};
+
 export const createTask = async (req, res) => {
   try {
     const { userId } = req.user;
-
     const { title, team, stage, date, priority, assets } = req.body;
+
+    // Validate input
+    const validationErrors = validateTaskInput(req.body);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Validation failed",
+        errors: validationErrors
+      });
+    }
+
+    // Validate team members exist
+    const teamMembers = await User.find({ _id: { $in: team } });
+    if (teamMembers.length !== team.length) {
+      return res.status(400).json({
+        status: false,
+        message: "One or more team members do not exist"
+      });
+    }
 
     let text = "New task has been assigned to you";
     if (team?.length > 1) {
@@ -35,18 +64,28 @@ export const createTask = async (req, res) => {
       activities: activity,
     });
 
-    await Notice.create({
-      team,
-      text,
-      task: task._id,
-    });
+    // Create notification with error handling
+    try {
+      await Notice.create({
+        team,
+        text,
+        task: task._id,
+      });
+    } catch (noticeError) {
+      console.error("Failed to create notification:", noticeError);
+      // Continue execution as notification failure shouldn't break task creation
+    }
 
     res
       .status(200)
       .json({ status: true, task, message: "Task created successfully." });
   } catch (error) {
-    console.log(error);
-    return res.status(400).json({ status: false, message: error.message });
+    console.error("Task creation error:", error);
+    return res.status(500).json({ 
+      status: false, 
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
@@ -199,30 +238,26 @@ export const dashboardStatistics = async (req, res) => {
 
 export const getTasks = async (req, res) => {
   try {
-    const { stage, isTrashed } = req.query;
+    const { stage, priority, search, isTrashed } = req.query;
+    const query = {};
 
-    let query = { isTrashed: isTrashed ? true : false };
-
-    if (stage) {
-      query.stage = stage;
+    if (stage) query.stage = stage;
+    if (priority) query.priority = priority;
+    if (isTrashed) query.isTrashed = isTrashed === "true";
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
     }
 
-    let queryResult = Task.find(query)
-      .populate({
-        path: "team",
-        select: "name title email",
-      })
-      .sort({ _id: -1 });
+    const tasks = await Task.find(query)
+      .populate("team", "name email title role avatar")
+      .sort({ createdAt: -1 });
 
-    const tasks = await queryResult;
-
-    res.status(200).json({
-      status: true,
-      tasks,
-    });
+    res.json(tasks);
   } catch (error) {
-    console.log(error);
-    return res.status(400).json({ status: false, message: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -279,76 +314,109 @@ export const createSubTask = async (req, res) => {
 
 export const updateTask = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { title, date, team, stage, priority, assets } = req.body;
-
-    const task = await Task.findById(id);
-
-    task.title = title;
-    task.date = date;
-    task.priority = priority.toLowerCase();
-    task.assets = assets;
-    task.stage = stage.toLowerCase();
-    task.team = team;
-
-    await task.save();
-
-    res
-      .status(200)
-      .json({ status: true, message: "Task duplicated successfully." });
-  } catch (error) {
-    console.log(error);
-    return res.status(400).json({ status: false, message: error.message });
-  }
-};
-
-export const trashTask = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const task = await Task.findById(id);
-
-    task.isTrashed = true;
-
-    await task.save();
-
-    res.status(200).json({
-      status: true,
-      message: `Task trashed successfully.`,
-    });
-  } catch (error) {
-    console.log(error);
-    return res.status(400).json({ status: false, message: error.message });
-  }
-};
-
-export const deleteRestoreTask = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { actionType } = req.query;
-
-    if (actionType === "delete") {
-      await Task.findByIdAndDelete(id);
-    } else if (actionType === "deleteAll") {
-      await Task.deleteMany({ isTrashed: true });
-    } else if (actionType === "restore") {
-      const resp = await Task.findById(id);
-
-      resp.isTrashed = false;
-      resp.save();
-    } else if (actionType === "restoreAll") {
-      await Task.updateMany(
-        { isTrashed: true },
-        { $set: { isTrashed: false } }
-      );
+    const task = await Task.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    }).populate("team", "name email title role avatar");
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
     }
+    res.json(task);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
 
-    res.status(200).json({
-      status: true,
-      message: `Operation performed successfully.`,
+export const deleteTask = async (req, res) => {
+  try {
+    const task = await Task.findByIdAndUpdate(
+      req.params.id,
+      { isTrashed: true },
+      { new: true }
+    );
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    res.json({ message: "Task moved to trash" });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+export const getTaskSummary = async (req, res) => {
+  try {
+    const totalTasks = await Task.countDocuments();
+    const last10Tasks = await Task.find()
+      .populate("team", "name email title role avatar")
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    const activeUsers = await User.find({ isActive: true })
+      .select("name email title role avatar")
+      .limit(5);
+
+    const todoTasks = await Task.countDocuments({ stage: "todo" });
+    const inProgressTasks = await Task.countDocuments({ stage: "in progress" });
+    const completedTasks = await Task.countDocuments({ stage: "completed" });
+
+    res.json({
+      totalTasks,
+      last10Tasks,
+      activeUsers,
+      todoTasks,
+      inProgressTasks,
+      completedTasks,
     });
   } catch (error) {
-    console.log(error);
-    return res.status(400).json({ status: false, message: error.message });
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getChartData = async (req, res) => {
+  try {
+    const highPriority = await Task.countDocuments({ priority: "high" });
+    const mediumPriority = await Task.countDocuments({ priority: "medium" });
+    const normalPriority = await Task.countDocuments({ priority: "normal" });
+    const lowPriority = await Task.countDocuments({ priority: "low" });
+
+    res.json([
+      { name: "High", value: highPriority },
+      { name: "Medium", value: mediumPriority },
+      { name: "Normal", value: normalPriority },
+      { name: "Low", value: lowPriority },
+    ]);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const addActivity = async (req, res) => {
+  try {
+    const task = await Task.findByIdAndUpdate(
+      req.params.id,
+      { $push: { activities: req.body } },
+      { new: true }
+    ).populate("team", "name email title role avatar");
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    res.json(task);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+export const addSubtask = async (req, res) => {
+  try {
+    const task = await Task.findByIdAndUpdate(
+      req.params.id,
+      { $push: { subTasks: req.body } },
+      { new: true }
+    ).populate("team", "name email title role avatar");
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    res.json(task);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 };

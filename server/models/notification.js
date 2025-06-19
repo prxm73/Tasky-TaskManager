@@ -1,16 +1,36 @@
-import mongoose, { Schema } from "mongoose";
+import mongoose from "mongoose";
 
-const noticeSchema = new Schema(
+const notificationSchema = new mongoose.Schema(
   {
-    team: [{ type: Schema.Types.ObjectId, ref: "User" }],
-    text: { type: String },
-    task: { type: Schema.Types.ObjectId, ref: "Task" },
-    notiType: { type: String, default: "alert", enum: ["alert", "message"] },
-    isRead: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    team: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    }],
+    text: {
+      type: String,
+      required: [true, "Notification text is required"],
+    },
+    task: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Task",
+      required: true,
+    },
+    isRead: {
+      type: Boolean,
+      default: false,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-const Notice = mongoose.model("Notice", noticeSchema);
+// Index for better query performance
+notificationSchema.index({ team: 1 });
+notificationSchema.index({ task: 1 });
+notificationSchema.index({ isRead: 1 });
 
-export default Notice;
+const Notification = mongoose.model("Notification", notificationSchema);
+
+export default Notification;

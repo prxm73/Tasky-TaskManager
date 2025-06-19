@@ -19,6 +19,7 @@ const Textbox = React.forwardRef(
             ref={ref}
             {...register}
             aria-invalid={error ? "true" : "false"}
+            autoComplete={type === "password" ? "current-password" : type === "email" ? "email" : "off"}
             className={clsx(
               "bg-transparent px-3 py-2.5 2xl:py-3 border border-gray-300 placeholder-gray-400 text-gray-900 outline-none text-base focus:ring-2 ring-blue-300",
               className
