@@ -6,6 +6,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { getInitials } from "../utils";
 import { logout } from "../redux/slices/authSlice";
+import ModalWrapper from "./ModalWrapper";
 
 const UserAvatar = () => {
   const [open, setOpen] = useState(false);
@@ -86,6 +87,18 @@ const UserAvatar = () => {
           </Transition>
         </Menu>
       </div>
+      {/* Profile Modal */}
+      <ModalWrapper open={open} setOpen={setOpen}>
+        <div className='p-6 flex flex-col gap-3 min-w-[280px]'>
+          <h2 className='text-lg font-bold mb-2'>Profile Details</h2>
+          <div><b>Name:</b> {user.name}</div>
+          <div><b>Email:</b> {user.email}</div>
+          <div><b>Role:</b> {user.role}</div>
+          <div><b>Admin:</b> {user.isAdmin ? 'Yes' : 'No'}</div>
+          <div><b>Active:</b> {user.isActive ? 'Yes' : 'No'}</div>
+          <button className='mt-4 bg-blue-600 text-white px-4 py-2 rounded' onClick={() => setOpen(false)}>Close</button>
+        </div>
+      </ModalWrapper>
     </>
   );
 };

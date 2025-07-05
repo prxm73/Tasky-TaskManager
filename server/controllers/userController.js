@@ -1,8 +1,15 @@
 import { response } from "express";
+import dotenv from "dotenv";
 import User from "../models/user.js";
+import Task from "../models/task.js";
 import { generateToken, cookieOptions } from "../utils/index.js";
 import Notice from "../models/notification.js";
 import jwt from "jsonwebtoken";
+import { 
+  createUserRegistrationNotification,
+  createRoleChangeNotification,
+  createSystemWideNotification
+} from "../utils/notificationUtils.js";
 
 // @desc    Register user
 // @route   POST /api/users/register
@@ -25,6 +32,17 @@ export const registerUser = async (req, res) => {
       isActive: true,
     });
 
+    // Create notification for new user registration (admin notification)
+    try {
+      // Get admin users to notify them
+      const adminUsers = await User.find({ isAdmin: true, isActive: true });
+      if (adminUsers.length > 0) {
+        await createUserRegistrationNotification(user._id, user._id, user.name);
+      }
+    } catch (noticeError) {
+      console.error("Failed to create user registration notification:", noticeError);
+    }
+
     res.status(201).json({
       _id: user._id,
       name: user.name,
@@ -45,8 +63,17 @@ export const registerUser = async (req, res) => {
 // @access  Public
 export const loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role, superKey } = req.body;
     const user = await User.findOne({ email });
+
+    if (role === "Admin") {
+      if (!superKey || superKey != process.env.ADMIN_SUPER_KEY) {
+        return res.status(401).json({ message: "Invalid super key for admin login" });
+      }
+      if (!user?.isAdmin) {
+        return res.status(403).json({ message: "User is not an admin" });
+      }
+    }
 
     if (user && (await user.matchPassword(password))) {
       res.json({
@@ -80,12 +107,45 @@ export const logoutUser = (req, res) => {
 
 export const getTeamList = async (req, res) => {
   try {
-    const users = await User.find().select("name title role email isActive");
+    const { userId, isAdmin } = req.user;
+    
+    let users;
+    
+    if (isAdmin) {
+      // Admins can see all users
+      users = await User.find().select("name title role email isActive");
+    } else {
+      // Non-admins can only see team members they work with
+      const teamMemberIds = await getTeamMemberIds(userId);
+      users = await User.find({ 
+        _id: { $in: teamMemberIds },
+        isActive: true 
+      }).select("name title role email isActive");
+    }
 
     res.status(200).json(users);
   } catch (error) {
     console.log(error);
     return res.status(400).json({ status: false, message: error.message });
+  }
+};
+
+// Helper function to get team member IDs for a user
+const getTeamMemberIds = async (userId) => {
+  try {
+    const tasks = await Task.find({ team: { $in: [userId] } });
+    const teamMemberIds = new Set();
+    
+    tasks.forEach(task => {
+      task.team.forEach(memberId => {
+        teamMemberIds.add(memberId.toString());
+      });
+    });
+    
+    return Array.from(teamMemberIds);
+  } catch (error) {
+    console.error('Error getting team member IDs:', error);
+    return [];
   }
 };
 
@@ -130,7 +190,6 @@ export const updateUserProfile = async (req, res) => {
     if (user) {
       user.name = req.body.name || user.name;
       user.email = req.body.email || user.email;
-      user.title = req.body.title || user.title;
       user.role = req.body.role || user.role;
       if (req.body.password) {
         user.password = req.body.password;
@@ -141,7 +200,6 @@ export const updateUserProfile = async (req, res) => {
         _id: updatedUser._id,
         name: updatedUser.name,
         email: updatedUser.email,
-        title: updatedUser.title,
         role: updatedUser.role,
         isAdmin: updatedUser.isAdmin,
         isActive: updatedUser.isActive,
@@ -189,28 +247,60 @@ export const deleteUser = async (req, res) => {
 // @access  Private/Admin
 export const updateUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
-    if (user) {
-      user.name = req.body.name || user.name;
-      user.email = req.body.email || user.email;
-      user.title = req.body.title || user.title;
-      user.role = req.body.role || user.role;
-      user.isActive = req.body.isActive !== undefined ? req.body.isActive : user.isActive;
-      user.isAdmin = req.body.isAdmin !== undefined ? req.body.isAdmin : user.isAdmin;
+    const { userId } = req.user;
+    const { id } = req.params;
+    const updateData = req.body;
 
-      const updatedUser = await user.save();
-      res.json({
-        _id: updatedUser._id,
-        name: updatedUser.name,
-        email: updatedUser.email,
-        title: updatedUser.title,
-        role: updatedUser.role,
-        isAdmin: updatedUser.isAdmin,
-        isActive: updatedUser.isActive,
-      });
-    } else {
-      res.status(404).json({ message: "User not found" });
+    // Get the original user to compare changes
+    const originalUser = await User.findById(id);
+    if (!originalUser) {
+      return res.status(404).json({ message: "User not found" });
     }
+
+    const user = await User.findByIdAndUpdate(id, updateData, {
+      new: true,
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if role was changed
+    if (updateData.role && updateData.role !== originalUser.role) {
+      try {
+        await createRoleChangeNotification(
+          user._id,
+          userId,
+          user.name,
+          originalUser.role,
+          updateData.role
+        );
+      } catch (noticeError) {
+        console.error("Failed to create role change notification:", noticeError);
+      }
+    }
+
+    // Check if user was activated/deactivated
+    if (updateData.isActive !== undefined && updateData.isActive !== originalUser.isActive) {
+      try {
+        const notificationType = updateData.isActive ? "user_activated" : "user_deactivated";
+        const text = updateData.isActive 
+          ? `User "${user.name}" account has been activated.`
+          : `User "${user.name}" account has been deactivated.`;
+
+        await createSystemWideNotification(
+          notificationType,
+          userId,
+          text,
+          "normal",
+          { userId: user._id, userName: user.name }
+        );
+      } catch (noticeError) {
+        console.error("Failed to create user activation notification:", noticeError);
+      }
+    }
+
+    res.json(user);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

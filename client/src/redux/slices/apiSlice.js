@@ -14,6 +14,49 @@ export const apiSlice = createApi({
       return headers;
     },
   }),
-  tagTypes: ["Task", "User"],
-  endpoints: (builder) => ({}),
+  tagTypes: ["Task", "User", "Notification"],
+  endpoints: (builder) => ({
+    // Notification endpoints
+    getNotifications: builder.query({
+      query: () => "/notifications",
+      providesTags: ["Notification"],
+    }),
+    markNotificationRead: builder.mutation({
+      query: (id) => ({
+        url: `/notifications/read/${id}`,
+        method: "PUT",
+      }),
+      invalidatesTags: ["Notification"],
+    }),
+    markAllNotificationsRead: builder.mutation({
+      query: () => ({
+        url: "/notifications/read-all",
+        method: "PUT",
+      }),
+      invalidatesTags: ["Notification"],
+    }),
+    deleteNotification: builder.mutation({
+      query: (id) => ({
+        url: `/notifications/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Notification"],
+    }),
+    createSystemNotification: builder.mutation({
+      query: (notificationData) => ({
+        url: "/notifications/system",
+        method: "POST",
+        body: notificationData,
+      }),
+      invalidatesTags: ["Notification"],
+    }),
+  }),
 });
+
+export const {
+  useGetNotificationsQuery,
+  useMarkNotificationReadMutation,
+  useMarkAllNotificationsReadMutation,
+  useDeleteNotificationMutation,
+  useCreateSystemNotificationMutation,
+} = apiSlice;

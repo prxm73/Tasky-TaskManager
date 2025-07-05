@@ -125,16 +125,47 @@ const seedNotifications = async (users, tasks) => {
     const notifications = [
       {
         team: [users[0]._id, users[1]._id],
-        text: "Landing page design assigned.",
+        text: "New task 'Landing page design' has been assigned to you and 1 others. The task priority is set as normal priority, so check and act accordingly. The task date is Thu Feb 29 2024. Thank you!",
         task: tasks[0]._id,
-        isRead: false,
+        type: "task_assigned",
+        by: users[0]._id,
+        isRead: [],
+        priority: "normal",
       },
       {
         team: [users[1]._id, users[2]._id],
-        text: "Auth implementation in progress.",
+        text: "New task 'Auth implementation' has been assigned to you and 1 others. The task priority is set as high priority, so check and act accordingly. The task date is Fri Feb 09 2024. Thank you!",
         task: tasks[1]._id,
-        isRead: false,
+        type: "task_assigned",
+        by: users[0]._id,
+        isRead: [],
+        priority: "high",
       },
+      // System-wide notification example
+      {
+        team: users.map(user => user._id), // All users
+        text: "Welcome to the Task Management System! We're excited to have you on board. This system will help you manage tasks efficiently and stay updated with all project activities.",
+        type: "announcement",
+        by: users[0]._id,
+        isRead: [],
+        priority: "normal",
+        isSystemWide: true,
+        metadata: {
+          title: "Welcome Message"
+        }
+      },
+      {
+        team: users.map(user => user._id), // All users
+        text: "New notification system has been implemented! You'll now receive real-time updates for task assignments, completions, and other important activities.",
+        type: "new_feature",
+        by: users[0]._id,
+        isRead: [],
+        priority: "normal",
+        isSystemWide: true,
+        metadata: {
+          title: "Notification System Update"
+        }
+      }
     ];
     await Notification.insertMany(notifications);
     console.log("Notifications seeded successfully");

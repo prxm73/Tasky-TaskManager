@@ -24,7 +24,6 @@ const Register = () => {
       // Add default values for required fields
       const userData = {
         ...data,
-        title: data.title || "User", // Default title if not provided
         isActive: true, // Default value
         isAdmin: false, // Default value
       };
@@ -114,17 +113,7 @@ const Register = () => {
                 })}
                 error={errors.password ? errors.password.message : ""}
               />
-              <Textbox
-                placeholder='Your Title'
-                type='text'
-                name='title'
-                label='Title'
-                className='w-full rounded-full'
-                register={registerForm("title", {
-                  required: "Title is required!",
-                })}
-                error={errors.title ? errors.title.message : ""}
-              />
+            
               <select
                 {...registerForm("role", {
                   required: "Role is required!",

@@ -1,12 +1,14 @@
 import React, { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchTasks } from "../redux/slices/taskSlice";
+import { fetchTasks, restoreTask } from "../redux/slices/taskSlice";
 import Title from "../components/Title";
 import Button from "../components/Button";
 import { IoMdAdd } from "react-icons/io";
 import { getInitials } from "../utils";
 import clsx from "clsx";
 import moment from "moment";
+import { MdRestore } from "react-icons/md";
+import { toast } from "sonner";
 
 const Trash = () => {
   const dispatch = useDispatch();
@@ -15,6 +17,16 @@ const Trash = () => {
   useEffect(() => {
     dispatch(fetchTasks({ isTrashed: true }));
   }, [dispatch]);
+
+  const handleRestoreTask = async (task) => {
+    try {
+      await dispatch(restoreTask(task._id)).unwrap();
+      
+      toast.success("Task restored successfully!");
+    } catch (error) {
+      toast.error("Failed to restore task: " + error.message);
+    }
+  };
 
   if (loading) {
     return <div>Loading...</div>;
@@ -27,11 +39,12 @@ const Trash = () => {
         <th className='py-2'>Priority</th>
         <th className='py-2'>Stage</th>
         <th className='py-2'>Modified At</th>
+        <th className='py-2'>Actions</th>
       </tr>
     </thead>
   );
 
-  const TableRow = ({ task }) => (
+  const TableRow = ({ task, onRestoreTask }) => (
     <tr className='border-b border-gray-200 text-gray-600 hover:bg-gray-400/10'>
       <td className='py-2'>
         <div className='flex items-center gap-3'>
@@ -76,6 +89,16 @@ const Trash = () => {
       </td>
 
       <td className='py-2 text-sm'>{moment(task?.updatedAt).fromNow()}</td>
+      
+      <td className='py-2'>
+        <button
+          onClick={() => onRestoreTask(task)}
+          className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium"
+        >
+          <MdRestore className="text-lg" />
+          Restore
+        </button>
+      </td>
     </tr>
   );
 
@@ -90,7 +113,7 @@ const Trash = () => {
           <TableHeader />
           <tbody>
             {tasks?.map((task, index) => (
-              <TableRow key={index + task?._id} task={task} />
+              <TableRow key={index + task?._id} task={task} onRestoreTask={handleRestoreTask} />
             ))}
           </tbody>
         </table>

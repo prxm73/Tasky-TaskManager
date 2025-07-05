@@ -8,9 +8,10 @@ import {
 } from "react-icons/md";
 import { FaTasks, FaTrashAlt, FaUsers } from "react-icons/fa";
 import { useDispatch, useSelector } from "react-redux";
-import { Link, useLocation } from "react-router-dom";
-import { setOpenSidebar } from "../redux/slices/authSlice";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { setOpenSidebar, logout } from "../redux/slices/authSlice";
 import clsx from "clsx";
+import { IoLogOutOutline } from "react-icons/io5";
 
 const linkData = [
   {
@@ -19,27 +20,27 @@ const linkData = [
     icon: <MdDashboard />,
   },
   {
-    label: "Tasks",
+    label: "My Tasks",
     link: "tasks",
     icon: <FaTasks />,
   },
   {
-    label: "Completed",
+    label: "Completed Tasks",
     link: "completed/completed",
     icon: <MdTaskAlt />,
   },
   {
-    label: "In Progress",
+    label: "Tasks In Progress",
     link: "in-progress/in progress",
     icon: <MdOutlinePendingActions />,
   },
   {
-    label: "To Do",
+    label: "Tasks To Do",
     link: "todo/todo",
     icon: <MdOutlinePendingActions />,
   },
   {
-    label: "Team",
+    label: "My Teams",
     link: "team",
     icon: <FaUsers />,
   },
@@ -55,13 +56,20 @@ const Sidebar = () => {
 
   const dispatch = useDispatch();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const path = location.pathname.split("/")[1];
 
-  const sidebarLinks = user?.isAdmin ? linkData : linkData.slice(0, 5);
+  // Show all links to admins, but regular users get all except Trash (which is admin-only)
+  const sidebarLinks = user?.isAdmin ? linkData : linkData.filter(link => link.label !== "Trash");
 
   const closeSidebar = () => {
     dispatch(setOpenSidebar(false));
+  };
+
+  const logoutHandler = () => {
+    dispatch(logout());
+    navigate('/log-in');
   };
 
   const NavLink = ({ el }) => {
@@ -98,6 +106,13 @@ const Sidebar = () => {
         <button className='w-full flex gap-2 p-2 items-center text-lg text-gray-800'>
           <MdSettings />
           <span>Settings</span>
+        </button>
+        <button
+          className='w-full flex gap-2 p-2 items-center text-lg text-red-600 mt-2'
+          onClick={logoutHandler}
+        >
+          <IoLogOutOutline />
+          <span>Logout</span>
         </button>
       </div>
     </div>

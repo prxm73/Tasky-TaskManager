@@ -56,16 +56,25 @@ export const fetchChartData = createAsyncThunk(
 
 export const createTask = createAsyncThunk(
   "tasks/createTask",
-  async (taskData) => {
-    const response = await axiosInstance.post("/tasks", taskData);
-    return response.data;
+  async (taskData, { rejectWithValue }) => {
+    console.log("taskSlice.js: createTask thunk called with data:", taskData);
+    try {
+      console.log("taskSlice.js: Making POST request to /api/tasks");
+      const response = await axiosInstance.post("/api/tasks", taskData);
+      console.log("taskSlice.js: POST request successful, response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.log("taskSlice.js: POST request failed with error:", error);
+      console.log("taskSlice.js: Error response:", error.response);
+      return rejectWithValue(error.response?.data?.message || "Failed to create task");
+    }
   }
 );
 
 export const updateTask = createAsyncThunk(
   "tasks/updateTask",
   async ({ id, taskData }) => {
-    const response = await axiosInstance.put(`/tasks/${id}`, taskData);
+    const response = await axiosInstance.put(`/api/tasks/${id}`, taskData);
     return response.data;
   }
 );
@@ -73,8 +82,20 @@ export const updateTask = createAsyncThunk(
 export const deleteTask = createAsyncThunk(
   "tasks/deleteTask",
   async (id) => {
-    await axiosInstance.delete(`/tasks/${id}`);
+    await axiosInstance.delete(`/api/tasks/${id}`);
     return id;
+  }
+);
+
+export const restoreTask = createAsyncThunk(
+  "tasks/restoreTask",
+  async (id, { rejectWithValue }) => {
+    try {
+      const response = await axiosInstance.put(`/api/tasks/${id}/restore`);
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || "Failed to restore task");
+    }
   }
 );
 
@@ -82,7 +103,7 @@ export const addActivity = createAsyncThunk(
   "tasks/addActivity",
   async ({ taskId, activity }) => {
     const response = await axiosInstance.post(
-      `/tasks/${taskId}/activities`,
+      `/api/tasks/${taskId}/activities`,
       activity
     );
     return response.data;
@@ -93,7 +114,7 @@ export const addSubtask = createAsyncThunk(
   "tasks/addSubtask",
   async ({ taskId, subtask }) => {
     const response = await axiosInstance.post(
-      `/tasks/${taskId}/subtasks`,
+      `/api/tasks/${taskId}/subtasks`,
       subtask
     );
     return response.data;
@@ -155,8 +176,20 @@ const taskSlice = createSlice({
         state.error = action.error.message;
       })
       // Create Task
+      .addCase(createTask.pending, (state) => {
+        console.log("taskSlice.js: createTask.pending reducer called");
+        state.loading = true;
+      })
       .addCase(createTask.fulfilled, (state, action) => {
+        console.log("taskSlice.js: createTask.fulfilled reducer called with payload:", action.payload);
+        state.loading = false;
         state.tasks.unshift(action.payload);
+        console.log("taskSlice.js: Updated tasks state:", state.tasks);
+      })
+      .addCase(createTask.rejected, (state, action) => {
+        console.log("taskSlice.js: createTask.rejected reducer called with error:", action.error);
+        state.loading = false;
+        state.error = action.error.message;
       })
       // Update Task
       .addCase(updateTask.fulfilled, (state, action) => {
@@ -170,6 +203,19 @@ const taskSlice = createSlice({
       // Delete Task
       .addCase(deleteTask.fulfilled, (state, action) => {
         state.tasks = state.tasks.filter((task) => task._id !== action.payload);
+      })
+      // Restore Task
+      .addCase(restoreTask.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(restoreTask.fulfilled, (state, action) => {
+        state.loading = false;
+        // Add the restored task back to the tasks array
+        state.tasks.unshift(action.payload.task);
+      })
+      .addCase(restoreTask.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message;
       })
       // Add Activity
       .addCase(addActivity.fulfilled, (state, action) => {

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, Link, Navigate } from "react-router-dom";
 import Textbox from "../components/Textbox";
@@ -19,10 +19,15 @@ const Login = () => {
 
   const navigate = useNavigate();
   const [login, { isLoading }] = useLoginMutation();
+  const [role, setRole] = useState("User");
 
   const submitHandler = async (data) => {
+    const loginData = { ...data, role };
+    if (role === "Admin") {
+      loginData.superKey = data.superKey;
+    }
     try {
-      const result = await login(data).unwrap();
+      const result = await login(loginData).unwrap();
       if (result) {
         dispatch(setCredentials(result));
         toast.success("Login successful!");
@@ -90,6 +95,17 @@ const Login = () => {
             </div>
 
             <div className='flex flex-col gap-y-5'>
+              <div className='flex flex-col gap-2'>
+                <label className='text-sm font-medium text-gray-700'>Login as</label>
+                <select
+                  className='w-full rounded-2xl border border-gray-300/40 bg-white/80 px-3 py-2 text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all duration-200 hover:border-blue-300/60 hover:bg-blue-50/40'
+                  value={role}
+                  onChange={e => setRole(e.target.value)}
+                >
+                  <option value='User'>User</option>
+                  <option value='Admin'>Admin</option>
+                </select>
+              </div>
               <Textbox
                 placeholder='email@example.com'
                 type='email'
@@ -120,6 +136,19 @@ const Login = () => {
                 })}
                 error={errors.password ? errors.password.message : ""}
               />
+              {role === "Admin" && (
+                <Textbox
+                  placeholder='Super Key'
+                  type='password'
+                  name='superKey'
+                  label='Super Key'
+                  className='w-full rounded-full'
+                  register={register("superKey", {
+                    required: "Super Key is required for admin login!"
+                  })}
+                  error={errors.superKey ? errors.superKey.message : ""}
+                />
+              )}
 
               <span className='text-sm text-gray-500 hover:text-blue-600 hover:underline cursor-pointer'>
                 Forget Password?

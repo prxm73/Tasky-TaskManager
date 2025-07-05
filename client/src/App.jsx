@@ -15,7 +15,7 @@ import Tasks from "./pages/Tasks";
 import Trash from "./pages/Trash";
 import Users from "./pages/Users";
 import Dashboard from "./pages/dashboard";
-import { setOpenSidebar, logout } from "./redux/slices/authSlice";
+import { setOpenSidebar, logout, setCredentials } from "./redux/slices/authSlice";
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -160,6 +160,18 @@ const MobileSidebar = () => {
 };
 
 function App() {
+  const dispatch = useDispatch();
+  useEffect(() => {
+    const userInfo = localStorage.getItem("userInfo");
+    if (userInfo) {
+      try {
+        dispatch(setCredentials(JSON.parse(userInfo)));
+      } catch (e) {
+        // ignore parse errors
+      }
+    }
+  }, [dispatch]);
+
   return (
     <ErrorBoundary>
       <main className='w-full min-h-screen bg-[#f3f4f6]'>

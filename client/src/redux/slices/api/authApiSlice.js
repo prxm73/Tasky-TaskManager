@@ -42,3 +42,5 @@ export const {
     useLogoutMutation,
     useUpdateProfileMutation,
 } = authApiSlice
+
+JSON.parse(localStorage.getItem("userInfo"))

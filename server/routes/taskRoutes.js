@@ -6,6 +6,7 @@ import {
   createTask,
   updateTask,
   deleteTask,
+  restoreTask,
   addActivity,
   addSubtask
 } from "../controllers/taskController.js";
@@ -33,6 +34,9 @@ router.put("/:id", updateTask);
 
 // Delete task
 router.delete("/:id", deleteTask);
+
+// Restore task from trash
+router.put("/:id/restore", restoreTask);
 
 // Add activity to task
 router.post("/:id/activities", addActivity);

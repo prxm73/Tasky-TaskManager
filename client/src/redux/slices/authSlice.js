@@ -13,11 +13,19 @@ const authSlice = createSlice({
   initialState,
   reducers: {
     setCredentials: (state, action) => {
-      const { user, token } = action.payload;
+      // Accepts either { user, token } or a flat user object with token
+      let user, token;
+      if (action.payload.user) {
+        user = action.payload.user;
+        token = action.payload.token;
+      } else {
+        // Flat user object, token may be present
+        user = { ...action.payload };
+        token = action.payload.token;
+      }
       state.user = user;
       state.token = token;
-      // Store in localStorage for persistence
-      localStorage.setItem("userInfo", JSON.stringify(action.payload));
+      localStorage.setItem("userInfo", JSON.stringify({ user, token }));
     },
     setLoading: (state, action) => {
       state.loading = action.payload;

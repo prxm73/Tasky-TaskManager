@@ -1,6 +1,17 @@
 import Notice from "../models/notification.js";
 import Task from "../models/task.js";
 import User from "../models/user.js";
+import { 
+  createTaskAssignmentNotification,
+  createTeamAdditionNotification,
+  createTaskCompletionNotification,
+  createTaskTrashNotification,
+  createTaskRestoreNotification,
+  createTaskDuplicationNotification,
+  createPriorityChangeNotification,
+  createDeadlineChangeNotification,
+  createSubtaskNotification
+} from "../utils/notificationUtils.js";
 
 // Validation helper
 const validateTaskInput = (data) => {
@@ -37,20 +48,9 @@ export const createTask = async (req, res) => {
       });
     }
 
-    let text = "New task has been assigned to you";
-    if (team?.length > 1) {
-      text = text + ` and ${team?.length - 1} others.`;
-    }
-
-    text =
-      text +
-      ` The task priority is set a ${priority} priority, so check and act accordingly. The task date is ${new Date(
-        date
-      ).toDateString()}. Thank you!!!`;
-
     const activity = {
       type: "assigned",
-      activity: text,
+      activity: `Task "${title}" assigned to team`,
       by: userId,
     };
 
@@ -64,27 +64,21 @@ export const createTask = async (req, res) => {
       activities: activity,
     });
 
-    // Create notification with error handling
+    // Create notification for task assignment
     try {
-      await Notice.create({
-        team,
-        text,
-        task: task._id,
-      });
+      await createTaskAssignmentNotification(task, team, userId);
     } catch (noticeError) {
       console.error("Failed to create notification:", noticeError);
       // Continue execution as notification failure shouldn't break task creation
     }
 
-    res
-      .status(200)
-      .json({ status: true, task, message: "Task created successfully." });
+    res.status(200).json(task);
   } catch (error) {
-    console.error("Task creation error:", error);
-    return res.status(500).json({ 
-      status: false, 
-      message: "Internal server error",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    console.error("Error creating task:", error);
+    res.status(500).json({
+      status: false,
+      message: "Failed to create task",
+      error: error.message,
     });
   }
 };
@@ -92,6 +86,7 @@ export const createTask = async (req, res) => {
 export const duplicateTask = async (req, res) => {
   try {
     const { id } = req.params;
+    const { userId } = req.user;
 
     const task = await Task.findById(id);
 
@@ -108,23 +103,12 @@ export const duplicateTask = async (req, res) => {
 
     await newTask.save();
 
-    //alert users of the task
-    let text = "New task has been assigned to you";
-    if (task.team.length > 1) {
-      text = text + ` and ${task.team.length - 1} others.`;
+    // Create notification for duplicated task
+    try {
+      await createTaskDuplicationNotification(task._id, newTask._id, task.team, userId, task.title);
+    } catch (noticeError) {
+      console.error("Failed to create notification for duplicated task:", noticeError);
     }
-
-    text =
-      text +
-      ` The task priority is set a ${
-        task.priority
-      } priority, so check and act accordingly. The task date is ${task.date.toDateString()}. Thank you!!!`;
-
-    await Notice.create({
-      team: task.team,
-      text,
-      task: newTask._id,
-    });
 
     res
       .status(200)
@@ -177,7 +161,7 @@ export const dashboardStatistics = async (req, res) => {
           .sort({ _id: -1 })
       : await Task.find({
           isTrashed: false,
-          team: { $all: [userId] },
+          team: { $in: [userId] },
         })
           .populate({
             path: "team",
@@ -238,17 +222,32 @@ export const dashboardStatistics = async (req, res) => {
 
 export const getTasks = async (req, res) => {
   try {
+    const { userId, isAdmin } = req.user;
     const { stage, priority, search, isTrashed } = req.query;
     const query = {};
 
+    // Filter by stage if provided
     if (stage) query.stage = stage;
     if (priority) query.priority = priority;
-    if (isTrashed) query.isTrashed = isTrashed === "true";
+    
+    // Handle isTrashed filter - if explicitly requested, use it; otherwise exclude trashed tasks
+    if (isTrashed !== undefined) {
+      query.isTrashed = isTrashed === "true";
+    } else {
+      // By default, exclude trashed tasks from regular views
+      query.isTrashed = false;
+    }
+    
     if (search) {
       query.$or = [
         { title: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
       ];
+    }
+
+    // If user is not admin, only show tasks where they are a team member
+    if (!isAdmin) {
+      query.team = { $in: [userId] };
     }
 
     const tasks = await Task.find(query)
@@ -314,12 +313,80 @@ export const createSubTask = async (req, res) => {
 
 export const updateTask = async (req, res) => {
   try {
-    const task = await Task.findByIdAndUpdate(req.params.id, req.body, {
+    const { userId } = req.user;
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // Get the original task to compare changes
+    const originalTask = await Task.findById(id);
+    if (!originalTask) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    const task = await Task.findByIdAndUpdate(id, updateData, {
       new: true,
     }).populate("team", "name email title role avatar");
+
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
     }
+
+    // Check if team members were added
+    if (updateData.team && updateData.team.length > originalTask.team.length) {
+      const newTeamMembers = updateData.team.filter(
+        memberId => !originalTask.team.includes(memberId)
+      );
+      
+      if (newTeamMembers.length > 0) {
+        try {
+          await createTeamAdditionNotification(task._id, newTeamMembers, userId, task.title);
+        } catch (noticeError) {
+          console.error("Failed to create team addition notification:", noticeError);
+        }
+      }
+    }
+
+    // Check if task was marked as completed
+    if (updateData.stage === "completed" && originalTask.stage !== "completed") {
+      try {
+        await createTaskCompletionNotification(task._id, task.team, userId, task.title);
+      } catch (noticeError) {
+        console.error("Failed to create completion notification:", noticeError);
+      }
+    }
+
+    // Check if priority was changed
+    if (updateData.priority && updateData.priority !== originalTask.priority) {
+      try {
+        await createPriorityChangeNotification(
+          task._id, 
+          task.team, 
+          userId, 
+          task.title, 
+          originalTask.priority, 
+          updateData.priority
+        );
+      } catch (noticeError) {
+        console.error("Failed to create priority change notification:", noticeError);
+      }
+    }
+
+    // Check if deadline was changed
+    if (updateData.date && new Date(updateData.date).getTime() !== new Date(originalTask.date).getTime()) {
+      try {
+        await createDeadlineChangeNotification(
+          task._id, 
+          task.team, 
+          userId, 
+          task.title, 
+          originalTask.date, 
+          updateData.date
+        );
+      } catch (noticeError) {
+        console.error("Failed to create deadline change notification:", noticeError);
+      }
+    }
+
     res.json(task);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -328,15 +395,61 @@ export const updateTask = async (req, res) => {
 
 export const deleteTask = async (req, res) => {
   try {
-    const task = await Task.findByIdAndUpdate(
-      req.params.id,
-      { isTrashed: true },
-      { new: true }
-    );
+    const { userId } = req.user;
+    const { id } = req.params;
+
+    const task = await Task.findById(id);
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
     }
+
+    const updatedTask = await Task.findByIdAndUpdate(
+      id,
+      { isTrashed: true },
+      { new: true }
+    );
+
+    // Create notification for task being trashed
+    try {
+      await createTaskTrashNotification(task._id, task.team, userId, task.title);
+    } catch (noticeError) {
+      console.error("Failed to create trash notification:", noticeError);
+    }
+
     res.json({ message: "Task moved to trash" });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+export const restoreTask = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const { id } = req.params;
+
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    if (!task.isTrashed) {
+      return res.status(400).json({ message: "Task is not in trash" });
+    }
+
+    const updatedTask = await Task.findByIdAndUpdate(
+      id,
+      { isTrashed: false },
+      { new: true }
+    ).populate("team", "name email title role avatar");
+
+    // Create notification for task being restored
+    try {
+      await createTaskRestoreNotification(task._id, task.team, userId, task.title);
+    } catch (noticeError) {
+      console.error("Failed to create restore notification:", noticeError);
+    }
+
+    res.json({ message: "Task restored successfully", task: updatedTask });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -344,19 +457,27 @@ export const deleteTask = async (req, res) => {
 
 export const getTaskSummary = async (req, res) => {
   try {
-    const totalTasks = await Task.countDocuments();
-    const last10Tasks = await Task.find()
+    const { userId, isAdmin } = req.user;
+    
+    // Base query - if not admin, only include tasks where user is team member
+    // Also exclude trashed tasks by default
+    const baseQuery = isAdmin ? { isTrashed: false } : { team: { $in: [userId] }, isTrashed: false };
+
+    const totalTasks = await Task.countDocuments(baseQuery);
+    const last10Tasks = await Task.find(baseQuery)
       .populate("team", "name email title role avatar")
       .sort({ createdAt: -1 })
       .limit(10);
 
-    const activeUsers = await User.find({ isActive: true })
+    // For active users, show all if admin, otherwise show only team members
+    const userQuery = isAdmin ? { isActive: true } : { isActive: true, _id: { $in: await getTeamMemberIds(userId) } };
+    const activeUsers = await User.find(userQuery)
       .select("name email title role avatar")
       .limit(5);
 
-    const todoTasks = await Task.countDocuments({ stage: "todo" });
-    const inProgressTasks = await Task.countDocuments({ stage: "in progress" });
-    const completedTasks = await Task.countDocuments({ stage: "completed" });
+    const todoTasks = await Task.countDocuments({ ...baseQuery, stage: "todo" });
+    const inProgressTasks = await Task.countDocuments({ ...baseQuery, stage: "in progress" });
+    const completedTasks = await Task.countDocuments({ ...baseQuery, stage: "completed" });
 
     res.json({
       totalTasks,
@@ -371,12 +492,37 @@ export const getTaskSummary = async (req, res) => {
   }
 };
 
+// Helper function to get team member IDs for a user
+const getTeamMemberIds = async (userId) => {
+  try {
+    const tasks = await Task.find({ team: { $in: [userId] }, isTrashed: false });
+    const teamMemberIds = new Set();
+    
+    tasks.forEach(task => {
+      task.team.forEach(memberId => {
+        teamMemberIds.add(memberId.toString());
+      });
+    });
+    
+    return Array.from(teamMemberIds);
+  } catch (error) {
+    console.error('Error getting team member IDs:', error);
+    return [];
+  }
+};
+
 export const getChartData = async (req, res) => {
   try {
-    const highPriority = await Task.countDocuments({ priority: "high" });
-    const mediumPriority = await Task.countDocuments({ priority: "medium" });
-    const normalPriority = await Task.countDocuments({ priority: "normal" });
-    const lowPriority = await Task.countDocuments({ priority: "low" });
+    const { userId, isAdmin } = req.user;
+    
+    // Base query - if not admin, only include tasks where user is team member
+    // Also exclude trashed tasks by default
+    const baseQuery = isAdmin ? { isTrashed: false } : { team: { $in: [userId] }, isTrashed: false };
+
+    const highPriority = await Task.countDocuments({ ...baseQuery, priority: "high" });
+    const mediumPriority = await Task.countDocuments({ ...baseQuery, priority: "medium" });
+    const normalPriority = await Task.countDocuments({ ...baseQuery, priority: "normal" });
+    const lowPriority = await Task.countDocuments({ ...baseQuery, priority: "low" });
 
     res.json([
       { name: "High", value: highPriority },
@@ -407,14 +553,34 @@ export const addActivity = async (req, res) => {
 
 export const addSubtask = async (req, res) => {
   try {
+    const { userId } = req.user;
+    const { id } = req.params;
+    const subtaskData = req.body;
+
     const task = await Task.findByIdAndUpdate(
-      req.params.id,
-      { $push: { subTasks: req.body } },
+      id,
+      { $push: { subTasks: subtaskData } },
       { new: true }
     ).populate("team", "name email title role avatar");
+    
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
     }
+
+    // Create notification for new subtask
+    try {
+      await createSubtaskNotification(
+        task._id, 
+        task.team, 
+        userId, 
+        task.title, 
+        subtaskData.title, 
+        false
+      );
+    } catch (noticeError) {
+      console.error("Failed to create subtask notification:", noticeError);
+    }
+
     res.json(task);
   } catch (error) {
     res.status(400).json({ message: error.message });

@@ -27,7 +27,11 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: "Not authorized, user is inactive" });
     }
 
-    req.user = user;
+    req.user = {
+      ...user.toObject(),
+      userId: user._id,
+      isAdmin: user.isAdmin
+    };
     next();
   } catch (error) {
     res.status(401).json({ message: "Not authorized, token failed" });
